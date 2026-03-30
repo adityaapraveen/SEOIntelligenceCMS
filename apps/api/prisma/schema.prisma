@@ -1,0 +1,72 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String
+  name      String
+  sites     Site[]
+  createdAt DateTime @default(now())
+}
+
+model Site {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  owner     User     @relation(fields: [ownerId], references: [id])
+  ownerId   String
+  pages     Page[]
+  createdAt DateTime @default(now())
+}
+
+model Page {
+  id          String        @id @default(cuid())
+  title       String
+  slug        String
+  content     String        @default("{}")   // JSON blocks
+  metaTitle   String?
+  metaDesc    String?
+  seoScore    Int?
+  decayScore  Int?
+  decayedAt   DateTime?
+  site        Site          @relation(fields: [siteId], references: [id])
+  siteId      String
+  versions    PageVersion[]
+  aiReports   AiReport[]
+  publishedAt DateTime?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  @@unique([siteId, slug])
+}
+
+model PageVersion {
+  id        String   @id @default(cuid())
+  page      Page     @relation(fields: [pageId], references: [id])
+  pageId    String
+  content   String   // JSON snapshot
+  metaTitle String?
+  metaDesc  String?
+  version   Int
+  createdAt DateTime @default(now())
+}
+
+model AiReport {
+  id             String   @id @default(cuid())
+  page           Page     @relation(fields: [pageId], references: [id])
+  pageId         String
+  type           String   // "semantic_diff" | "seo" | "decay"
+  previousVersion Int?
+  currentVersion  Int?
+  report         String   // JSON blob from Claude
+  seoScore       Int?
+  decayScore     Int?
+  decayDomain    String?
+  createdAt      DateTime @default(now())
+}
