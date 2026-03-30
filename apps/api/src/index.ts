@@ -1,3 +1,4 @@
+// apps/api/src/index.ts
 import express from 'express'
 import cors from 'cors'
 import helmet from 'helmet'
@@ -8,6 +9,12 @@ import dotenv from 'dotenv'
 
 dotenv.config()
 
+import { chat, AI_MODEL } from './lib/ai'
+import authRouter  from './routes/auth'
+import sitesRouter from './routes/sites'
+import pagesRouter from './routes/pages'
+import aiRouter    from './routes/ai'       // ← add
+
 const app = express()
 const httpServer = createServer(app)
 export const io = new Server(httpServer, { cors: { origin: '*' } })
@@ -17,13 +24,34 @@ app.use(cors({ origin: process.env.CLIENT_URL || 'http://localhost:5173' }))
 app.use(morgan('dev'))
 app.use(express.json())
 
-// Routes (stubs — filled in next commits)
-app.use('/api/auth', (req, res) => res.json({ ok: true, route: 'auth' }))
-app.use('/api/sites', (req, res) => res.json({ ok: true, route: 'sites' }))
-app.use('/api/pages', (req, res) => res.json({ ok: true, route: 'pages' }))
-app.use('/api/ai', (req, res) => res.json({ ok: true, route: 'ai' }))
+// Auth routes (live)
+app.use('/api/auth', authRouter)
 
-app.get('/health', (_req, res) => res.json({ status: 'ok' }))
+// Stubs — replaced in later commits
+app.use('/api/sites', (_req, res) => res.json({ ok: true, route: 'sites' }))
+app.use('/api/pages', (_req, res) => res.json({ ok: true, route: 'pages' }))
+app.use('/api/auth',  authRouter)
+app.use('/api/sites', sitesRouter)   // ← replaces stub
+app.use('/api/pages', pagesRouter)   // ← replaces stub
+app.use('/api/ai',    aiRouter)             // ← add
+
+
+// AI smoke-test: confirms OpenRouter + model config is working
+app.get('/api/ai/ping', async (_req, res) => {
+    try {
+        const reply = await chat([
+            { role: 'user', content: 'Reply with exactly: {"status":"ok","model":"' + AI_MODEL + '"}' }
+        ], { max_tokens: 64 })
+        res.json({ reply, model: AI_MODEL })
+    } catch (err: any) {
+        res.status(500).json({ error: err.message })
+    }
+})
+
+app.get('/health', (_req, res) => res.json({ status: 'ok', model: AI_MODEL }))
 
 const PORT = process.env.PORT || 4000
-httpServer.listen(PORT, () => console.log(`API running on :${PORT}`))
+httpServer.listen(PORT, () => {
+    console.log(`API running on :${PORT}`)
+    console.log(`AI model: ${AI_MODEL}`)
+})
