@@ -10,10 +10,10 @@ import dotenv from 'dotenv'
 dotenv.config()
 
 import { chat, AI_MODEL } from './lib/ai'
-import authRouter  from './routes/auth'
+import authRouter from './routes/auth'
 import sitesRouter from './routes/sites'
 import pagesRouter from './routes/pages'
-import aiRouter    from './routes/ai'       // ← add
+import aiRouter from './routes/ai'       // ← add
 
 const app = express()
 const httpServer = createServer(app)
@@ -24,16 +24,10 @@ app.use(cors({ origin: process.env.CLIENT_URL || 'http://localhost:5173' }))
 app.use(morgan('dev'))
 app.use(express.json())
 
-// Auth routes (live)
 app.use('/api/auth', authRouter)
-
-// Stubs — replaced in later commits
-app.use('/api/sites', (_req, res) => res.json({ ok: true, route: 'sites' }))
-app.use('/api/pages', (_req, res) => res.json({ ok: true, route: 'pages' }))
-app.use('/api/auth',  authRouter)
-app.use('/api/sites', sitesRouter)   // ← replaces stub
-app.use('/api/pages', pagesRouter)   // ← replaces stub
-app.use('/api/ai',    aiRouter)             // ← add
+app.use('/api/sites', sitesRouter)
+app.use('/api/pages', pagesRouter)
+app.use('/api/ai', aiRouter)
 
 
 // AI smoke-test: confirms OpenRouter + model config is working
