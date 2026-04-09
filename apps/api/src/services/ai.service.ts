@@ -49,12 +49,38 @@ export interface UnifiedReport {
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function parseJson<T>(raw: string, fallback: T): T {
-    try {
-        const cleaned = raw.replace(/```json|```/g, '').trim()
-        return JSON.parse(cleaned) as T
-    } catch {
-        return fallback
+    // Strategy 1: direct parse
+    try { return JSON.parse(raw) as T } catch { }
+
+    // Strategy 2: strip markdown fences
+    const stripped = raw.replace(/```(?:json)?\s*/gi, '').replace(/```\s*/g, '').trim()
+    try { return JSON.parse(stripped) as T } catch { }
+
+    // Strategy 3: extract the first { ... } block (greedy)
+    const braceMatch = stripped.match(/\{[\s\S]*\}/)
+    if (braceMatch) {
+        try { return JSON.parse(braceMatch[0]) as T } catch {
+            // Strategy 3b: try to repair common issues
+            let repaired = braceMatch[0]
+                .replace(/,\s*([\]}])/g, '$1')       // trailing commas
+                .replace(/'/g, '"')                    // single quotes
+                .replace(/(\w+)\s*:/g, '"$1":')        // unquoted keys (rough)
+                .replace(/""+/g, '"')                   // doubled quotes from above
+            try { return JSON.parse(repaired) as T } catch { }
+        }
     }
+
+    // Strategy 4: try line-by-line JSON extraction
+    const lines = raw.split('\n')
+    const jsonStart = lines.findIndex(l => l.trim().startsWith('{'))
+    const jsonEnd = lines.length - 1 - [...lines].reverse().findIndex(l => l.trim().endsWith('}'))
+    if (jsonStart >= 0 && jsonEnd >= jsonStart) {
+        const block = lines.slice(jsonStart, jsonEnd + 1).join('\n')
+        try { return JSON.parse(block) as T } catch { }
+    }
+
+    console.error('[AI parseJson] Could not parse AI response. Raw output (first 500 chars):', raw.slice(0, 500))
+    return fallback
 }
 
 function extractText(content: string): string {
@@ -145,14 +171,11 @@ export async function runSeoAnalysis(pageId: string): Promise<SeoReport> {
     const raw = await chat([
         {
             role: 'system',
-            content: `You are an expert SEO analyst embedded in a CMS.
-Analyze both the content AND the structural metadata of a webpage.
-Be specific, actionable, and honest about issues.
-Respond ONLY with a valid JSON object — no markdown, no preamble.`,
+            content: `You are an expert SEO analyst. You MUST respond with ONLY a valid JSON object. No markdown code fences, no explanation text, no preamble — just the raw JSON object starting with { and ending with }.`,
         },
         {
             role: 'user',
-            content: `Perform a full SEO analysis of this page.
+            content: `Perform a full SEO analysis of this page and return ONLY valid JSON.
 
 SITE: ${page.site.name} (/${page.site.slug})
 PAGE TITLE TAG: ${page.metaTitle ?? '(not set)'}
@@ -160,37 +183,41 @@ META DESCRIPTION: ${page.metaDesc ?? '(not set)'}
 PAGE HEADING: ${page.title}
 PAGE SLUG: /${page.slug}
 CONTENT:
-${contentText}
+${contentText.slice(0, 3000)}
 
-Return a JSON object with this exact shape:
+IMPORTANT: Every array field MUST contain at least 1 item. Do NOT return empty arrays. Always provide real, specific analysis.
+
+Return this exact JSON structure (replace placeholder values with real analysis):
 {
-  "score": <integer 0-100>,
-  "grade": "A|B|C|D|F",
-  "summary": "2-3 sentence overall assessment",
+  "score": 65,
+  "grade": "C",
+  "summary": "Provide a real 2-3 sentence assessment of the page SEO quality.",
   "titleAnalysis": {
     "current": "${page.metaTitle ?? ''}",
-    "issues": ["list of specific issues"],
-    "suggestion": "improved title tag text"
+    "issues": ["Describe at least 1 real issue with the title tag"],
+    "suggestion": "Write an improved title tag here"
   },
   "descAnalysis": {
     "current": "${page.metaDesc ?? ''}",
-    "issues": ["list of specific issues"],
-    "suggestion": "improved meta description text"
+    "issues": ["Describe at least 1 real issue with the meta description"],
+    "suggestion": "Write an improved meta description here"
   },
   "contentAnalysis": {
-    "wordCount": <integer>,
-    "readability": "Flesch reading ease label e.g. Easy / Standard / Difficult",
-    "keywordDensity": "assessment of keyword usage",
-    "issues": ["list of content-level issues"]
+    "wordCount": 150,
+    "readability": "Standard",
+    "keywordDensity": "Assessment of keyword usage",
+    "issues": ["Describe at least 1 content-level issue"]
   },
   "structureAnalysis": {
-    "issues": ["heading hierarchy, slug, schema issues"],
-    "suggestions": ["actionable structural fixes"]
+    "issues": ["Describe at least 1 structural issue"],
+    "suggestions": ["Provide at least 1 actionable structural fix"]
   },
-  "quickWins": ["top 3 highest-impact single fixes"]
-}`,
+  "quickWins": ["First quick win", "Second quick win", "Third quick win"]
+}
+
+Respond with ONLY the JSON object. No other text.`,
         },
-    ])
+    ], { temperature: 0 })
 
     const report = parseJson<SeoReport>(raw, {
         score: 0,
@@ -240,14 +267,11 @@ export async function runDecayAnalysis(pageId: string): Promise<DecayReport> {
     const raw = await chat([
         {
             role: 'system',
-            content: `You are a content freshness analyst for a CMS.
-Assess how quickly this content will become outdated based on its topic domain and content signals.
-Use real-world knowledge of how fast different content domains change.
-Respond ONLY with a valid JSON object — no markdown, no preamble.`,
+            content: `You are a content freshness analyst. You MUST respond with ONLY a valid JSON object. No markdown code fences, no explanation text, no preamble — just the raw JSON object starting with { and ending with }.`,
         },
         {
             role: 'user',
-            content: `Analyze the decay risk of this page.
+            content: `Analyze the decay risk of this page and return ONLY valid JSON.
 
 PAGE TITLE: ${page.title}
 META TITLE: ${page.metaTitle ?? '(not set)'}
@@ -258,19 +282,23 @@ ${contentText.slice(0, 2000)}
 Domain decay reference (months until typically stale):
 ${JSON.stringify(DOMAIN_DECAY_RATES, null, 2)}
 
-Return a JSON object with this exact shape:
+IMPORTANT: Every array field MUST contain at least 1 item. Do NOT return empty arrays.
+
+Return this exact JSON structure (replace placeholder values with real analysis):
 {
-  "score": <integer 0-100, where 100 = perfectly fresh, 0 = critically stale>,
-  "domain": "the single best-fit domain category from the reference",
-  "estimatedDecayMonths": <integer months until this content type typically needs refresh>,
-  "daysUntilStale": <integer days from today until this specific page will likely be stale>,
-  "riskLevel": "fresh|aging|stale|critical",
-  "reasons": ["specific signals in this content that drive decay risk"],
-  "refreshSuggestions": ["concrete actions to keep this page fresh"],
-  "topicsToUpdate": ["specific sections or claims likely to go stale first"]
-}`,
+  "score": 70,
+  "domain": "general",
+  "estimatedDecayMonths": 12,
+  "daysUntilStale": 180,
+  "riskLevel": "fresh",
+  "reasons": ["Describe at least 1 specific decay risk signal"],
+  "refreshSuggestions": ["Provide at least 1 concrete refresh action"],
+  "topicsToUpdate": ["Name at least 1 specific section needing updates"]
+}
+
+Respond with ONLY the JSON object. No other text.`,
         },
-    ])
+    ], { temperature: 0 })
 
     const report = parseJson<DecayReport>(raw, {
         score: 50,

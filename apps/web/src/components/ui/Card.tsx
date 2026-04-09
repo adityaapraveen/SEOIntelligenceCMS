@@ -13,7 +13,7 @@ export default function Card({ children, className, onClick }: Props) {
             className={cn(
                 'bg-[var(--bg-card)] backdrop-blur-sm',
                 'border border-[var(--border-subtle)]',
-                'rounded-2xl p-5',
+                'rounded-2xl p-6',
                 'transition-all duration-250 ease-out',
                 onClick && [
                     'cursor-pointer',

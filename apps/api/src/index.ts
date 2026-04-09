@@ -13,7 +13,8 @@ import { chat, AI_MODEL } from './lib/ai'
 import authRouter from './routes/auth'
 import sitesRouter from './routes/sites'
 import pagesRouter from './routes/pages'
-import aiRouter from './routes/ai'       // ← add
+import aiRouter from './routes/ai'
+import publicRouter from './routes/public'
 
 const app = express()
 const httpServer = createServer(app)
@@ -28,6 +29,7 @@ app.use('/api/auth', authRouter)
 app.use('/api/sites', sitesRouter)
 app.use('/api/pages', pagesRouter)
 app.use('/api/ai', aiRouter)
+app.use('/p', publicRouter)  // Public CMS page hosting
 
 
 // AI smoke-test: confirms OpenRouter + model config is working
