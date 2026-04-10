@@ -137,6 +137,7 @@ router.post('/:id/publish', requireAuth, async (req: Request, res: Response) => 
     const updated = await prisma.page.update({
         where: { id },
         data: { publishedAt: new Date() },
+        include: { site: { select: { ownerId: true, name: true, slug: true } } },
     })
     return res.json({ page: updated })
 })
@@ -154,6 +155,7 @@ router.post('/:id/unpublish', requireAuth, async (req: Request, res: Response) =
     const updated = await prisma.page.update({
         where: { id },
         data: { publishedAt: null },
+        include: { site: { select: { ownerId: true, name: true, slug: true } } },
     })
     return res.json({ page: updated })
 })
