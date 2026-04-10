@@ -19,6 +19,8 @@ const UpdatePageSchema = z.object({
     title: z.string().min(1).max(200).optional(),
     slug: z.string().min(1).max(200).optional(),
     content: z.string().optional(),
+    template: z.string().nullable().optional(),
+    templateData: z.string().nullable().optional(),
     metaTitle: z.string().max(60).nullable().optional(),
     metaDesc: z.string().max(160).nullable().optional(),
 })

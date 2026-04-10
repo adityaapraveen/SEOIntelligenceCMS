@@ -65,6 +65,53 @@ function escapeHtml(str: string): string {
         .replace(/"/g, '&quot;')
 }
 
+// ─── Template Engine ──────────────────────────────────────────────────────
+// Replaces {{variable}} and {{{variable}}} (unescaped) placeholders with JSON data values
+// Supports {{#if var}}...{{/if}}, {{#each arr}}...{{/each}} basic blocks
+function renderTemplate(templateStr: string, data: Record<string, any>): string {
+    let result = templateStr
+
+    // Handle {{#each array}}...{{/each}} blocks
+    result = result.replace(/\{\{#each\s+(\w+)\}\}([\s\S]*?)\{\{\/each\}\}/g, (_match, key, body) => {
+        const arr = data[key]
+        if (!Array.isArray(arr)) return ''
+        return arr.map((item: any, index: number) => {
+            let block = body
+            if (typeof item === 'object' && item !== null) {
+                // Replace {{this.prop}} within each block
+                for (const [k, v] of Object.entries(item)) {
+                    block = block.replace(new RegExp(`\\{\\{this\\.${k}\\}\\}`, 'g'), escapeHtml(String(v ?? '')))
+                    block = block.replace(new RegExp(`\\{\\{\\{this\\.${k}\\}\\}\\}`, 'g'), String(v ?? ''))
+                }
+                block = block.replace(/\{\{@index\}\}/g, String(index))
+            } else {
+                block = block.replace(/\{\{this\}\}/g, escapeHtml(String(item)))
+                block = block.replace(/\{\{\{this\}\}\}/g, String(item))
+            }
+            return block
+        }).join('')
+    })
+
+    // Handle {{#if variable}}...{{/if}} blocks
+    result = result.replace(/\{\{#if\s+(\w+)\}\}([\s\S]*?)\{\{\/if\}\}/g, (_match, key, body) => {
+        const val = data[key]
+        if (!val || (Array.isArray(val) && val.length === 0)) return ''
+        return body
+    })
+
+    // Replace {{{variable}}} — unescaped (for HTML content)
+    result = result.replace(/\{\{\{(\w+)\}\}\}/g, (_match, key) => {
+        return String(data[key] ?? '')
+    })
+
+    // Replace {{variable}} — escaped
+    result = result.replace(/\{\{(\w+)\}\}/g, (_match, key) => {
+        return escapeHtml(String(data[key] ?? ''))
+    })
+
+    return result
+}
+
 // GET /p/:siteSlug/:pageSlug — public page
 router.get('/:siteSlug/:pageSlug', async (req: Request, res: Response) => {
     const siteSlug = p(req, 'siteSlug')
@@ -86,9 +133,36 @@ router.get('/:siteSlug/:pageSlug', async (req: Request, res: Response) => {
     const metaTitle = page.metaTitle || page.title
     const metaDesc = page.metaDesc || extractText(page.content).slice(0, 160)
     const canonicalUrl = `${req.protocol}://${req.get('host')}/p/${siteSlug}/${pageSlug}`
-    const htmlContent = contentToHtml(page.content)
     const publishDate = page.publishedAt ? new Date(page.publishedAt).toISOString() : ''
     const modifiedDate = page.updatedAt ? new Date(page.updatedAt).toISOString() : ''
+
+    // ─── Template-powered rendering ───────────────────────────────
+    if (page.template) {
+        let templateData: Record<string, any> = {}
+        try {
+            templateData = page.templateData ? JSON.parse(page.templateData) : {}
+        } catch { }
+
+        // Inject system variables
+        templateData.__title = page.title
+        templateData.__metaTitle = metaTitle
+        templateData.__metaDesc = metaDesc
+        templateData.__siteName = site.name
+        templateData.__siteSlug = site.slug
+        templateData.__pageSlug = page.slug
+        templateData.__canonicalUrl = canonicalUrl
+        templateData.__publishDate = publishDate
+        templateData.__modifiedDate = modifiedDate
+
+        const renderedHtml = renderTemplate(page.template, templateData)
+
+        res.setHeader('Content-Type', 'text/html; charset=utf-8')
+        res.setHeader('Cache-Control', 'public, max-age=60, stale-while-revalidate=300')
+        return res.send(renderedHtml)
+    }
+
+    // ─── Legacy block-based rendering ─────────────────────────────
+    const htmlContent = contentToHtml(page.content)
 
     // JSON-LD structured data
     const jsonLd = {

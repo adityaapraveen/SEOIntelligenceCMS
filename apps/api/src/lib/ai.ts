@@ -22,11 +22,31 @@ export async function chat(
     messages: OpenAI.Chat.ChatCompletionMessageParam[],
     opts?: Partial<OpenAI.Chat.ChatCompletionCreateParamsNonStreaming>
 ): Promise<string> {
-    const res = await ai.chat.completions.create({
-        model: AI_MODEL,
-        messages,
-        max_tokens: 2048,
-        ...opts,
-    })
-    return res.choices[0]?.message?.content ?? ''
+    try {
+        const res = await ai.chat.completions.create({
+            model: AI_MODEL,
+            messages,
+            max_tokens: 2048,
+            ...opts,
+        })
+
+        // Guard against undefined/null choices from the API
+        if (!res || !res.choices || !Array.isArray(res.choices) || res.choices.length === 0) {
+            console.error('[AI chat] API returned no choices. Full response:', JSON.stringify(res, null, 2))
+            return ''
+        }
+
+        return res.choices[0]?.message?.content ?? ''
+    } catch (err: any) {
+        console.error('[AI chat] API call failed:', err.message)
+        // If the error has a response body, log it for debugging
+        if (err.response) {
+            console.error('[AI chat] Response status:', err.response.status)
+            try {
+                const body = await err.response.text?.()
+                if (body) console.error('[AI chat] Response body:', body.slice(0, 500))
+            } catch { }
+        }
+        throw new Error(`AI service error: ${err.message}`)
+    }
 }
